@@ -1,0 +1,6 @@
+{
+  "name": "Intercambio",
+  "description": "Una aplicación web en español para intercambiar favores y ayuda mutua de manera justa utilizando un sistema de puntos sin dinero real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
