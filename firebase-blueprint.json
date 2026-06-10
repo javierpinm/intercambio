@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile in the neighborhood network.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique user ID matching their Firebase Auth UID." },
+        "name": { "type": "string", "description": "Display name of the user." },
+        "avatar": { "type": "string", "description": "Two letters initials or avatar emoji." },
+        "bio": { "type": "string", "description": "Short bio or description of the user." },
+        "skills": { "type": "array", "description": "List of skills offered by the user." },
+        "points": { "type": "number", "description": "Available point balance for exchanging services." },
+        "favorsDone": { "type": "number", "description": "Number of favors successfully performed." },
+        "favorsReceived": { "type": "number", "description": "Number of favors requested and completed." },
+        "memberSince": { "type": "string", "format": "date-time", "description": "Timestamp when the user joined the network." },
+        "locationLabel": { "type": "string", "description": "The name of the Madrid neighborhood." }
+      },
+      "required": ["id", "name", "avatar", "points", "favorsDone", "favorsReceived", "memberSince", "locationLabel"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A neighborhood favor offer or request listing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique listing identifier." },
+        "authorId": { "type": "string", "description": "User ID of the listing's author." },
+        "authorName": { "type": "string", "description": "Cached display name of the author." },
+        "authorAvatar": { "type": "string", "description": "Cached avatar of the author." },
+        "type": { "type": "string", "enum": ["ofrezco", "necesito"], "description": "Whether the author offers help or needs it." },
+        "title": { "type": "string", "description": "Title of the listing." },
+        "description": { "type": "string", "description": "Full description of the listing." },
+        "category": { "type": "string", "enum": ["reparaciones", "jardin", "tecnologia", "mascotas", "mudanzas", "arte", "otro"], "description": "The category of the favor." },
+        "suggestedPoints": { "type": "number", "description": "Calculated/suggested exchange points size." },
+        "isUrgent": { "type": "boolean", "description": "Whether the favor must be resolved urgently." },
+        "locationLabel": { "type": "string", "description": "Target neighborhood location." },
+        "status": { "type": "string", "enum": ["abierto", "en_progreso", "completado", "cancelado"], "description": "The listing resolution state." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the post was published." },
+        "interestedUsers": { "type": "array", "description": "Interested helper user IDs." }
+      },
+      "required": ["id", "authorId", "authorName", "authorAvatar", "type", "title", "description", "category", "suggestedPoints", "isUrgent", "locationLabel", "status", "createdAt", "interestedUsers"]
+    },
+    "Exchange": {
+      "title": "Exchange",
+      "description": "A service transaction agreement between a helper and a requester.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique exchange ID." },
+        "postId": { "type": "string", "description": "Target listing transaction belongs to." },
+        "postTitle": { "type": "string", "description": "Target listing's cached name." },
+        "postCategory": { "type": "string", "description": "Target listing's cached category." },
+        "postType": { "type": "string", "enum": ["ofrezco", "necesito"], "description": "Target listing's type." },
+        "points": { "type": "number", "description": "Points value to transfer." },
+        "requesterId": { "type": "string", "description": "User receiving help." },
+        "helperId": { "type": "string", "description": "User delivering the service." },
+        "status": { "type": "string", "enum": ["pendiente", "aceptado", "en_progreso", "completado", "cancelado"], "description": "The exchange progress state." },
+        "requesterConfirmedComplete": { "type": "boolean", "description": "Whether the helper finished confirming." },
+        "helperConfirmedComplete": { "type": "boolean", "description": "Whether the requester finished confirming." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "State transition initialized timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "State transition updated timestamp." }
+      },
+      "required": ["id", "postId", "postTitle", "postCategory", "postType", "points", "requesterId", "helperId", "status", "requesterConfirmedComplete", "helperConfirmedComplete", "createdAt", "updatedAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "An in-app notification delivered to a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique notification identifier." },
+        "userId": { "type": "string", "description": "The destination user." },
+        "type": { "type": "string", "enum": ["new_request", "accepted", "completed", "new_favor_pending"], "description": "Sub-type event code." },
+        "title": { "type": "string", "description": "Visual title of notification." },
+        "message": { "type": "string", "description": "Visual details of notification." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Dispatch timestamp." },
+        "read": { "type": "boolean", "description": "Has the user looked at it?" },
+        "relatedExchangeId": { "type": "string" },
+        "relatedPostId": { "type": "string" }
+      },
+      "required": ["id", "userId", "type", "title", "message", "createdAt", "read"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Neighborhood user document containing user data, balances, bios."
+    },
+    "posts/{postId}": {
+      "schema": "Post",
+      "description": "Post listings containing jobs wanted or offered."
+    },
+    "exchanges/{exchangeId}": {
+      "schema": "Exchange",
+      "description": "Active/historical transaction agreements between neighborhood participants."
+    },
+    "notifications/{notifId}": {
+      "schema": "AppNotification",
+      "description": "Active in-app user notifications."
+    }
+  }
+}

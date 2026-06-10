@@ -1,9 +1,18 @@
 import { cn } from "@/lib/utils";
+import { db, auth } from "./firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  getDocFromServer
+} from "firebase/firestore";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 
-// TODO Phase 2: Firebase / Firestore Interfaces & Imports
-// import { db, auth } from './firebase';
-// import { doc, setDoc, getDoc, updateDoc, collection, onSnapshot } from 'firebase/firestore';
-
+// --- INTERFACES ---
 export interface UserProfile {
   id: string;
   name: string;
@@ -60,6 +69,54 @@ export interface AppNotification {
   read: boolean;
   relatedExchangeId?: string;
   relatedPostId?: string;
+}
+
+export enum OperationType {
+  CREATE = "create",
+  UPDATE = "update",
+  DELETE = "delete",
+  LIST = "list",
+  GET = "get",
+  WRITE = "write",
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+// --- STANDARD ERROR HANDLER ---
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error("Firestore Error: ", JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
 // Coordinate mappings for the simulated neighborhood map
@@ -194,7 +251,7 @@ const MOCK_POSTS: Post[] = [
     suggestedPoints: 4,
     isUrgent: false,
     locationLabel: "Chueca",
-    status: "en_progreso", // This one matches the seeded in-progress exchange
+    status: "en_progreso",
     createdAt: "2026-05-24T10:30:00Z",
     interestedUsers: ["user-3"]
   },
@@ -229,86 +286,6 @@ const MOCK_POSTS: Post[] = [
     status: "abierto",
     createdAt: "2026-05-23T15:20:00Z",
     interestedUsers: []
-  },
-  {
-    id: "post-6",
-    authorId: "user-6",
-    authorName: "Elena Valenzuela",
-    authorAvatar: "EV",
-    type: "necesito",
-    title: "Riego de plantas el próximo fin de semana",
-    description: "Me iré de viaje el próximo sábado y domingo. Necesito que alguien de confianza se pase a regar las macetas de mi balcón el domingo por la mañana. Se tarda menos de 10 minutos.",
-    category: "jardin",
-    suggestedPoints: 2,
-    isUrgent: false,
-    locationLabel: "La Latina",
-    status: "abierto",
-    createdAt: "2026-05-22T09:40:00Z",
-    interestedUsers: []
-  },
-  {
-    id: "post-7",
-    authorId: "user-6",
-    authorName: "Elena Valenzuela",
-    authorAvatar: "EV",
-    type: "ofrezco",
-    title: "Retrato ilustrado digital personalizado",
-    description: "Dibujo un retrato de perfil en formato digital con estética moderna y alegre a partir de una foto tuya. Ideal para actualizar tu avatar de redes o para hacer un regalo original.",
-    category: "arte",
-    suggestedPoints: 6,
-    isUrgent: false,
-    locationLabel: "La Latina",
-    status: "abierto",
-    createdAt: "2026-05-21T11:00:00Z",
-    interestedUsers: []
-  },
-  {
-    id: "post-8",
-    authorId: "user-3",
-    authorName: "Javier Ortiz",
-    authorAvatar: "JO",
-    type: "ofrezco",
-    title: "Limpieza de malware y optimización de PC",
-    description: "Si tu ordenador portátil va sumamente lento o tiene extensiones de navegador molestas, ofrezco revisarlo, eliminar software basura y recomendarte mejoras gratuitas de rendimiento.",
-    category: "tecnologia",
-    suggestedPoints: 3,
-    isUrgent: false,
-    locationLabel: "Malasaña",
-    status: "abierto",
-    createdAt: "2026-05-20T14:15:00Z",
-    interestedUsers: []
-  },
-  {
-    id: "post-9",
-    authorId: "user-2",
-    authorName: "Lucía Gómez",
-    authorAvatar: "LG",
-    type: "ofrezco",
-    title: "Asesoría de poda y siembra en macetuhuertos",
-    description: "Comparto mis conocimientos para armar un pequeño huerto en tu balcón o terraza. Te aconsejo qué plantar según la luz de tu casa y cómo podar arbustos urbanos de manera óptima.",
-    category: "jardin",
-    suggestedPoints: 4,
-    isUrgent: false,
-    locationLabel: "Lavapiés",
-    status: "abierto",
-    createdAt: "2026-05-19T10:00:00Z",
-    interestedUsers: []
-  },
-  {
-    id: "post-10",
-    authorId: "user-1",
-    authorName: "Carlos Mendoza",
-    authorAvatar: "CM",
-    type: "necesito",
-    title: "Desmontaje y bajada de estantería de madera",
-    description: "Necesito desmontar una estantería grande de pino macizo de mi salón y bajarla al punto limpio móvil del barrio. Se requiere tener un destornillador eléctrico potente y ganas de cargar.",
-    category: "mudanzas",
-    suggestedPoints: 5,
-    isUrgent: false,
-    locationLabel: "Chamberí",
-    status: "completado", // Matches seeded completed exchange
-    createdAt: "2026-05-18T16:00:00Z",
-    interestedUsers: []
   }
 ];
 
@@ -321,28 +298,13 @@ const MOCK_EXCHANGES: Exchange[] = [
     postCategory: "reparaciones",
     postType: "necesito",
     points: 4,
-    requesterId: "user-5", // Manuel Torres (who needs help)
-    helperId: "user-3", // Javier Ortiz (who helps)
+    requesterId: "user-5",
+    helperId: "user-3",
     status: "en_progreso",
     requesterConfirmedComplete: false,
     helperConfirmedComplete: false,
     createdAt: "2026-05-24T12:00:00Z",
     updatedAt: "2026-05-24T12:00:00Z"
-  },
-  {
-    id: "exc-2",
-    postId: "post-10",
-    postTitle: "Desmontaje y bajada de estantería de madera",
-    postCategory: "mudanzas",
-    postType: "necesito",
-    points: 5,
-    requesterId: "user-1", // Carlos Mendoza
-    helperId: "user-4", // Sofía Ruiz (who helped)
-    status: "completado",
-    requesterConfirmedComplete: true,
-    helperConfirmedComplete: true,
-    createdAt: "2026-05-19T09:00:00Z",
-    updatedAt: "2026-05-19T11:30:00Z"
   }
 ];
 
@@ -356,11 +318,12 @@ const KEYS = {
   THEME: "intercambio_theme",
 };
 
-// Data service layer to isolate mock persistence from future Phase 2 Firestore
+// Data service layer to isolate mock persistence and support Firebase
 export const dataService = {
-  init() {
+  async init() {
     if (typeof window === "undefined") return;
 
+    // LocalStorage Fallback Seeding
     if (!localStorage.getItem(KEYS.USERS)) {
       localStorage.setItem(KEYS.USERS, JSON.stringify(MOCK_USERS));
     }
@@ -386,6 +349,58 @@ export const dataService = {
       ];
       localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(defaultNotifs));
     }
+
+    // MANDATORY CONSTRAINT: test the Firestore connection on boot
+    try {
+      await getDocFromServer(doc(db, "test", "connection"));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("the client is offline")) {
+        console.error("Please check your Firebase configuration.");
+      }
+    }
+  },
+
+  // --- DATABASE SEEDING FOR CLOUD ---
+  async seedFirestoreIfEmpty() {
+    if (typeof window === "undefined" || !auth.currentUser) return;
+    try {
+      const postsSnap = await getDocs(collection(db, "posts"));
+      if (postsSnap.empty) {
+        console.log("Seeding empty cloud Firestore database with default records...");
+        
+        // Seed default users
+        for (const user of MOCK_USERS) {
+          await setDoc(doc(db, "users", user.id), user);
+        }
+        // Seed default posts
+        for (const post of MOCK_POSTS) {
+          await setDoc(doc(db, "posts", post.id), post);
+        }
+        // Seed default exchanges
+        for (const exchange of MOCK_EXCHANGES) {
+          await setDoc(doc(db, "exchanges", exchange.id), exchange);
+        }
+        // Seed notifications
+        const defaultNotifs: AppNotification[] = [
+          {
+            id: "notif-1",
+            userId: "user-5",
+            type: "new_request",
+            title: "Nueva solicitud de intercambio",
+            message: "Javier Ortiz se ha ofrecido para ayudarte con 'Cambiar junta de grifo de cocina que gotea'.",
+            createdAt: "2026-05-24T11:45:00Z",
+            read: false,
+            relatedExchangeId: "exc-1",
+            relatedPostId: "post-3"
+          }
+        ];
+        for (const notif of defaultNotifs) {
+          await setDoc(doc(db, "notifications", notif.id), notif);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to seed empty Firestore: ", e);
+    }
   },
 
   // --- THEME MANAGEMENT ---
@@ -399,11 +414,9 @@ export const dataService = {
     localStorage.setItem(KEYS.THEME, theme);
   },
 
-  // --- USER AUTHENTICATION MOCK ---
-  // TODO Phase 2: Firebase Authentication (Google popup) + cloud integration
+  // --- USER PROFILE & AUTH ---
   getCurrentUser(): UserProfile | null {
     if (typeof window === "undefined") return null;
-    this.init();
     const currentId = localStorage.getItem(KEYS.CURRENT_USER_ID);
     if (!currentId) return null;
 
@@ -413,7 +426,6 @@ export const dataService = {
 
   getUsers(): UserProfile[] {
     if (typeof window === "undefined") return MOCK_USERS;
-    this.init();
     return JSON.parse(localStorage.getItem(KEYS.USERS) || "[]");
   },
 
@@ -422,32 +434,32 @@ export const dataService = {
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
   },
 
-  // TODO Phase 2: Guest-to-authenticated user data migration on Google auth login
-  loginAsGoogleMock() {
+  // --- REAL GOOGLE SIGN IN via POPUP ---
+  async loginWithGoogle(): Promise<UserProfile | null> {
     if (typeof window === "undefined") return null;
-    const users = this.getUsers();
-    // Choose an existing user or create a persistent "Google" user to simulate realistic signin
-    let googleUser = users.find(u => u.id === "google-user-1");
-    if (!googleUser) {
-      googleUser = {
-        id: "google-user-1",
-        name: "Javier del Pino (Google)",
-        avatar: "JP",
-        bio: "Profesor apasionado por la tecnología, los idiomas y dispuesto a compartir e intercambiar saberes en Madrid.",
-        skills: ["Docencia", "Matemáticas", "Inglés intermedio", "Hacer pan casero"],
-        points: 10, // Starts with 10 points
-        favorsDone: 0,
-        favorsReceived: 0,
-        memberSince: new Date().toISOString(),
-        locationLabel: "Malasaña",
-      };
-      const updated = [...users, googleUser];
-      this.setUsers(updated);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      
+      const profile = await this.syncUserProfile(firebaseUser);
+      if (profile) {
+        // Seed if first time
+        await this.seedFirestoreIfEmpty();
+      }
+      return profile;
+    } catch (error) {
+      console.error("Auth error during Google sign-in: ", error);
+      throw error;
     }
-    localStorage.setItem(KEYS.CURRENT_USER_ID, googleUser.id);
-    return googleUser;
   },
 
+  // Fallback Google Mock to assure zero layout breaks
+  loginAsGoogleMock() {
+    return this.loginAsGuest(); // Redirect fallback to guest for simplicity
+  },
+
+  // --- GUEST LOG IN ---
   loginAsGuest() {
     if (typeof window === "undefined") return null;
     const users = this.getUsers();
@@ -489,33 +501,83 @@ export const dataService = {
     return user;
   },
 
-  logOut() {
+  async logOut() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(KEYS.CURRENT_USER_ID);
+    await auth.signOut();
   },
 
-  updateUserProfile(updatedProfile: Partial<UserProfile>) {
+  async syncUserProfile(firebaseUser: any): Promise<UserProfile | null> {
+    if (typeof window === "undefined") return null;
+    const userDocRef = doc(db, "users", firebaseUser.uid);
+    let profile: UserProfile | null = null;
+    
+    try {
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        profile = userDoc.data() as UserProfile;
+      } else {
+        // Create new user profile in Firestore
+        const name = firebaseUser.displayName || "Vecino de Madrid";
+        const words = name.trim().split(/\s+/);
+        const avatar = words.length >= 2 
+          ? (words[0][0] + words[1][0]).toUpperCase() 
+          : name.slice(0, 2).toUpperCase();
+          
+        profile = {
+          id: firebaseUser.uid,
+          name: name,
+          avatar: avatar || "V",
+          bio: "¡Hola! Estoy muy feliz de unirme a la red solidaria del barrio. Ofrezco mi tiempo y mis habilidades para ayudarnos en la comunidad.",
+          skills: ["Ayuda general", "Recados", "Conversación"],
+          points: 10, // 10 points starting bonus
+          favorsDone: 0,
+          favorsReceived: 0,
+          memberSince: new Date().toISOString(),
+          locationLabel: "Chamberí",
+        };
+        await setDoc(userDocRef, profile);
+      }
+      
+      // Save locally to cache/localstorage for instant retrieval
+      localStorage.setItem(KEYS.CURRENT_USER_ID, profile.id);
+      const users = this.getUsers();
+      const otherUsers = users.filter(u => u.id !== profile!.id);
+      this.setUsers([...otherUsers, profile]);
+      return profile;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}`);
+      return null;
+    }
+  },
+
+  async updateUserProfile(updatedProfile: Partial<UserProfile>) {
     if (typeof window === "undefined") return null;
     const current = this.getCurrentUser();
     if (!current) return null;
 
+    const updated = { ...current, ...updatedProfile };
+    
+    // Save to local cache
     const users = this.getUsers();
-    const updatedUsers = users.map(u => {
-      if (u.id === current.id) {
-        return { ...u, ...updatedProfile };
-      }
-      return u;
-    });
-
+    const updatedUsers = users.map(u => (u.id === current.id ? updated : u));
     this.setUsers(updatedUsers);
-    return { ...current, ...updatedProfile };
+
+    // Save to Firestore if authenticated
+    if (auth.currentUser && current.id === auth.currentUser.uid) {
+      try {
+        await setDoc(doc(db, "users", current.id), updated);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${current.id}`);
+      }
+    }
+
+    return updated;
   },
 
   // --- POSTS ---
-  // TODO Phase 2: Firestore — posts collection with real-time updates (onSnapshot)
   getPosts(): Post[] {
     if (typeof window === "undefined") return MOCK_POSTS;
-    this.init();
     return JSON.parse(localStorage.getItem(KEYS.POSTS) || "[]");
   },
 
@@ -524,7 +586,7 @@ export const dataService = {
     localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
   },
 
-  createPost(postData: Omit<Post, "id" | "authorId" | "authorName" | "authorAvatar" | "status" | "createdAt" | "interestedUsers">) {
+  async createPost(postData: Omit<Post, "id" | "authorId" | "authorName" | "authorAvatar" | "status" | "createdAt" | "interestedUsers">) {
     if (typeof window === "undefined") return null;
     const currentUser = this.getCurrentUser();
     if (!currentUser) return null;
@@ -542,15 +604,22 @@ export const dataService = {
 
     const posts = this.getPosts();
     this.setPosts([newPost, ...posts]);
+
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "posts", newPost.id), newPost);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `posts/${newPost.id}`);
+      }
+    }
+
     return newPost;
   },
 
   // --- EXCHANGES HANDLERS ---
-  // State machine: pendiente → aceptado → en_progreso → completado | cancelado
-  // TODO Phase 2: Firestore exchanges collection and security rules
   getExchanges(): Exchange[] {
     if (typeof window === "undefined") return MOCK_EXCHANGES;
-    this.init();
     return JSON.parse(localStorage.getItem(KEYS.EXCHANGES) || "[]");
   },
 
@@ -559,10 +628,7 @@ export const dataService = {
     localStorage.setItem(KEYS.EXCHANGES, JSON.stringify(exchanges));
   },
 
-  /**
-   * User clicks "Ofrecer ayuda" or "Solicitar favor" on a post.
-   */
-  initiateExchange(postId: string): Exchange | null {
+  async initiateExchange(postId: string): Promise<Exchange | null> {
     if (typeof window === "undefined") return null;
     const currentUser = this.getCurrentUser();
     if (!currentUser) return null;
@@ -573,17 +639,12 @@ export const dataService = {
     const post = posts[postIndex];
 
     if (post.authorId === currentUser.id) {
-      // Cannot exchange with oneself
       return null;
     }
 
-    // Determine requester and helper
-    // If post type is "ofrezco": post author is the helper, current user is requester
-    // If post type is "necesito": post author is the requester, current user is helper
     const helperId = post.type === "ofrezco" ? post.authorId : currentUser.id;
     const requesterId = post.type === "ofrezco" ? currentUser.id : post.authorId;
 
-    // Check if exchange already exists for this post with this requester-helper pair
     const exchanges = this.getExchanges();
     const existing = exchanges.find(e => e.postId === postId && e.requesterId === requesterId && e.helperId === helperId && e.status !== "cancelado");
     if (existing) return existing;
@@ -604,15 +665,13 @@ export const dataService = {
       updatedAt: new Date().toISOString()
     };
 
-    // Save exchange
     this.setExchanges([newExchange, ...exchanges]);
 
-    // Update post interested users list
     post.interestedUsers = Array.from(new Set([...post.interestedUsers, currentUser.id]));
     this.setPosts(posts);
 
-    // Create Notification to the Post Author
-    this.createNotification({
+    // Create Notification
+    const newNotif = await this.createNotification({
       userId: post.authorId,
       type: "new_request",
       title: "Nueva propuesta de intercambio",
@@ -621,13 +680,23 @@ export const dataService = {
       relatedPostId: post.id
     });
 
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "exchanges", newExchange.id), newExchange);
+        await setDoc(doc(db, "posts", post.id), post);
+        if (newNotif) {
+          await setDoc(doc(db, "notifications", newNotif.id), newNotif);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `exchanges/${newExchange.id}`);
+      }
+    }
+
     return newExchange;
   },
 
-  /**
-   * Post author approves/accepts the pending exchange proposal.
-   */
-  acceptExchange(exchangeId: string): Exchange | null {
+  async acceptExchange(exchangeId: string): Promise<Exchange | null> {
     if (typeof window === "undefined") return null;
     const currentUser = this.getCurrentUser();
     if (!currentUser) return null;
@@ -637,26 +706,22 @@ export const dataService = {
     if (idx === -1) return null;
     const exchange = exchanges[idx];
 
-    // Verify current user is actually the post author/owner of exchange
     const posts = this.getPosts();
     const post = posts.find(p => p.id === exchange.postId);
     if (!post || post.authorId !== currentUser.id) {
       return null;
     }
 
-    // Change status to aceptado and en_progreso
     exchange.status = "en_progreso";
     exchange.updatedAt = new Date().toISOString();
     exchanges[idx] = exchange;
     this.setExchanges(exchanges);
 
-    // Update post status to locked in_progreso
     post.status = "en_progreso";
     this.setPosts(posts);
 
-    // Notify the helper/requester counterpart
     const counterPartyId = exchange.helperId === currentUser.id ? exchange.requesterId : exchange.helperId;
-    this.createNotification({
+    const newNotif = await this.createNotification({
       userId: counterPartyId,
       type: "accepted",
       title: "Intercambio aceptado",
@@ -665,14 +730,23 @@ export const dataService = {
       relatedPostId: post.id
     });
 
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "exchanges", exchange.id), exchange);
+        await setDoc(doc(db, "posts", post.id), post);
+        if (newNotif) {
+          await setDoc(doc(db, "notifications", newNotif.id), newNotif);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `exchanges/${exchange.id}`);
+      }
+    }
+
     return exchange;
   },
 
-  /**
-   * Dual confirmation completion logic.
-   * Points transfer ONLY when both parties confirm. No negative balances allowed.
-   */
-  completeExchange(exchangeId: string): Exchange | null {
+  async completeExchange(exchangeId: string): Promise<Exchange | null> {
     if (typeof window === "undefined") return null;
     const currentUser = this.getCurrentUser();
     if (!currentUser) return null;
@@ -684,23 +758,21 @@ export const dataService = {
 
     if (exchange.status !== "en_progreso") return exchange;
 
-    // Check who is confirming
     if (exchange.requesterId === currentUser.id) {
       exchange.requesterConfirmedComplete = true;
     } else if (exchange.helperId === currentUser.id) {
       exchange.helperConfirmedComplete = true;
     } else {
-      // Forbidden: current user not in exchange
       return null;
     }
 
     exchange.updatedAt = new Date().toISOString();
+    let transferTriggered = false;
+    let requesterProfile: UserProfile | null = null;
+    let helperProfile: UserProfile | null = null;
 
-    // Check if both parties confirmed
     if (exchange.requesterConfirmedComplete && exchange.helperConfirmedComplete) {
-      // DUAL CONFIRMATION MET! Let's handle points transfer and count stats.
-      // TODO Phase 2: Cloud Functions atomic point transaction + db triggers.
-      
+      transferTriggered = true;
       const users = this.getUsers();
       const requesterIndex = users.findIndex(u => u.id === exchange.requesterId);
       const helperIndex = users.findIndex(u => u.id === exchange.helperId);
@@ -709,16 +781,7 @@ export const dataService = {
         const requester = users[requesterIndex];
         const helper = users[helperIndex];
 
-        // Ensure requester has enough points. If not, we have to handle it:
-        // Enforce the strictly positive/non-negative constraint: "Points are non-negative integers — NEVER allow points to go below 0"
         if (requester.points < exchange.points) {
-          // In a real DB, transaction aborts. In mock, we can clamp or return an error/warning.
-          // Let's prevent completing if it would cause requester's points to go negative, 
-          // but if they had enough when the deal was agreed, let's process safely or show a notification.
-          // We will strictly deduct and clamp to 0 if force-deducted, but let's deduct up to the max points,
-          // OR better: block transfer and throw an error or handle cleanly. Let's make sure it clamps to at least 0.
-          // Since the prompt specifies points cannot go below 0, let's ensure requester points = Math.max(0, requester.points - exchange.points);
-          // And helper receives whatever is deducted.
           const actualDeduction = Math.min(requester.points, exchange.points);
           requester.points -= actualDeduction;
           helper.points += actualDeduction;
@@ -727,37 +790,45 @@ export const dataService = {
           helper.points += exchange.points;
         }
 
-        // Increment stats
         helper.favorsDone += 1;
         requester.favorsReceived += 1;
+
+        requesterProfile = requester;
+        helperProfile = helper;
 
         users[requesterIndex] = requester;
         users[helperIndex] = helper;
         this.setUsers(users);
       }
 
-      // Mark exchange as fully completed
       exchange.status = "completado";
 
-      // Mark the original post status as completado
       const posts = this.getPosts();
       const postIndex = posts.findIndex(p => p.id === exchange.postId);
       if (postIndex !== -1) {
         posts[postIndex].status = "completado";
         this.setPosts(posts);
+        
+        if (auth.currentUser) {
+          try {
+            await setDoc(doc(db, "posts", posts[postIndex].id), posts[postIndex]);
+          } catch (e) {
+            console.error("Firestore error saving completed post: ", e);
+          }
+        }
       }
 
-      // Generate notifications for both
-      this.createNotification({
+      // Create completion notifications
+      const notif1 = await this.createNotification({
         userId: exchange.requesterId,
         type: "completed",
         title: "Intercambio completado",
-        message: `¡Listo! Has confirmado la finalización de gratis/puntos para: "${exchange.postTitle}". Se han transferido ${exchange.points} puntos.`,
+        message: `¡Listo! Has confirmado la finalización del favor para: "${exchange.postTitle}". Se han transferido ${exchange.points} puntos.`,
         relatedExchangeId: exchange.id,
         relatedPostId: exchange.postId
       });
 
-      this.createNotification({
+      const notif2 = await this.createNotification({
         userId: exchange.helperId,
         type: "completed",
         title: "Intercambio completado",
@@ -766,10 +837,19 @@ export const dataService = {
         relatedPostId: exchange.postId
       });
 
+      if (auth.currentUser) {
+        try {
+          if (notif1) await setDoc(doc(db, "notifications", notif1.id), notif1);
+          if (notif2) await setDoc(doc(db, "notifications", notif2.id), notif2);
+        } catch (e) {
+          console.error("Firestore notifications error: ", e);
+        }
+      }
+
     } else {
-      // Only one confirmed, generate notification for the other party
+      // Pending other party's confirmation notification
       const counterPartyId = exchange.helperId === currentUser.id ? exchange.requesterId : exchange.helperId;
-      this.createNotification({
+      const termNotif = await this.createNotification({
         userId: counterPartyId,
         type: "new_favor_pending",
         title: "Confirmación de finalización pendiente",
@@ -777,14 +857,36 @@ export const dataService = {
         relatedExchangeId: exchange.id,
         relatedPostId: exchange.postId
       });
+
+      if (auth.currentUser && termNotif) {
+        try {
+          await setDoc(doc(db, "notifications", termNotif.id), termNotif);
+        } catch (e) {
+          console.error("Firestore notification pending error: ", e);
+        }
+      }
     }
 
     exchanges[idx] = exchange;
     this.setExchanges(exchanges);
+
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "exchanges", exchange.id), exchange);
+        if (transferTriggered && requesterProfile && helperProfile) {
+          await setDoc(doc(db, "users", requesterProfile.id), requesterProfile);
+          await setDoc(doc(db, "users", helperProfile.id), helperProfile);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `exchanges/${exchange.id}`);
+      }
+    }
+
     return exchange;
   },
 
-  cancelExchange(exchangeId: string): Exchange | null {
+  async cancelExchange(exchangeId: string): Promise<Exchange | null> {
     if (typeof window === "undefined") return null;
     const currentUser = this.getCurrentUser();
     if (!currentUser) return null;
@@ -794,7 +896,6 @@ export const dataService = {
     if (idx === -1) return null;
     const exchange = exchanges[idx];
 
-    // Verify authorized party: requester or helper
     if (exchange.requesterId !== currentUser.id && exchange.helperId !== currentUser.id) {
       return null;
     }
@@ -804,7 +905,6 @@ export const dataService = {
     exchanges[idx] = exchange;
     this.setExchanges(exchanges);
 
-    // Free the post back to abierto
     const posts = this.getPosts();
     const postIndex = posts.findIndex(p => p.id === exchange.postId);
     if (postIndex !== -1) {
@@ -812,9 +912,8 @@ export const dataService = {
       this.setPosts(posts);
     }
 
-    // Notify counterparty
     const counterPartyId = exchange.helperId === currentUser.id ? exchange.requesterId : exchange.helperId;
-    this.createNotification({
+    const cancelNotif = await this.createNotification({
       userId: counterPartyId,
       type: "completed",
       title: "Intercambio cancelado",
@@ -823,14 +922,27 @@ export const dataService = {
       relatedPostId: exchange.postId
     });
 
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "exchanges", exchange.id), exchange);
+        if (postIndex !== -1) {
+          await setDoc(doc(db, "posts", posts[postIndex].id), posts[postIndex]);
+        }
+        if (cancelNotif) {
+          await setDoc(doc(db, "notifications", cancelNotif.id), cancelNotif);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `exchanges/${exchange.id}`);
+      }
+    }
+
     return exchange;
   },
 
   // --- NOTIFICATIONS ---
-  // TODO Phase 2: Firebase Cloud Messaging or Firestore triggers on new document
   getNotifications(): AppNotification[] {
     if (typeof window === "undefined") return [];
-    this.init();
     return JSON.parse(localStorage.getItem(KEYS.NOTIFICATIONS) || "[]");
   },
 
@@ -847,7 +959,7 @@ export const dataService = {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
-  createNotification(notifData: Omit<AppNotification, "id" | "createdAt" | "read">) {
+  async createNotification(notifData: Omit<AppNotification, "id" | "createdAt" | "read">) {
     if (typeof window === "undefined") return null;
 
     const newNotif: AppNotification = {
@@ -859,10 +971,20 @@ export const dataService = {
 
     const notifs = this.getNotifications();
     this.setNotifications([newNotif, ...notifs]);
+
+    // Save to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, "notifications", newNotif.id), newNotif);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `notifications/${newNotif.id}`);
+      }
+    }
+
     return newNotif;
   },
 
-  markNotificationsAsRead() {
+  async markNotificationsAsRead() {
     if (typeof window === "undefined") return;
     const user = this.getCurrentUser();
     if (!user) return;
@@ -875,5 +997,83 @@ export const dataService = {
       return n;
     });
     this.setNotifications(updated);
+
+    // Write updates to Firestore if authenticated
+    if (auth.currentUser) {
+      try {
+        const userNotifs = updated.filter(n => n.userId === user.id);
+        for (const notif of userNotifs) {
+          await setDoc(doc(db, "notifications", notif.id), notif);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, "notificationsRead");
+      }
+    }
+  },
+
+  // --- REAL-TIME LIVE SNAPSHOTS FROM FIRESTORE ---
+  setupRealtimeListeners(userId: string, onUpdate: () => void) {
+    if (typeof window === "undefined" || !auth.currentUser) return () => {};
+
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      const users: UserProfile[] = [];
+      snapshot.forEach(docSnap => {
+        users.push(docSnap.data() as UserProfile);
+      });
+      if (users.length > 0) {
+        this.setUsers(users);
+        onUpdate();
+      }
+    }, (error) => {
+      console.error("Firestore user sync failed: ", error);
+    });
+
+    const unsubPosts = onSnapshot(collection(db, "posts"), (snapshot) => {
+      const posts: Post[] = [];
+      snapshot.forEach(docSnap => {
+        posts.push(docSnap.data() as Post);
+      });
+      if (posts.length > 0) {
+        posts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        this.setPosts(posts);
+        onUpdate();
+      }
+    }, (error) => {
+      console.error("Firestore post sync failed: ", error);
+    });
+
+    const unsubExchanges = onSnapshot(collection(db, "exchanges"), (snapshot) => {
+      const exchanges: Exchange[] = [];
+      snapshot.forEach(docSnap => {
+        exchanges.push(docSnap.data() as Exchange);
+      });
+      if (exchanges.length > 0) {
+        this.setExchanges(exchanges);
+        onUpdate();
+      }
+    }, (error) => {
+      console.error("Firestore exchange sync failed: ", error);
+    });
+
+    const unsubNotifs = onSnapshot(collection(db, "notifications"), (snapshot) => {
+      const notifs: AppNotification[] = [];
+      snapshot.forEach(docSnap => {
+        const notif = docSnap.data() as AppNotification;
+        if (notif.userId === userId) {
+          notifs.push(notif);
+        }
+      });
+      this.setNotifications(notifs);
+      onUpdate();
+    }, (error) => {
+      console.error("Firestore notifications sync failed: ", error);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubPosts();
+      unsubExchanges();
+      unsubNotifs();
+    };
   }
 };

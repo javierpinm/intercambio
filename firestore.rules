@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Catch-All Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\:\\.]+$');
+    }
+
+    // --- STANDALONE VALIDATORS ---
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.avatar is string && data.avatar.size() <= 50
+        && data.bio is string && data.bio.size() <= 2000
+        && data.skills is list && data.skills.size() <= 50
+        && data.points is number && data.points >= 0
+        && data.favorsDone is number && data.favorsDone >= 0
+        && data.favorsReceived is number && data.favorsReceived >= 0
+        && data.memberSince is string
+        && data.locationLabel is string && data.locationLabel.size() <= 100;
+    }
+
+    function isValidPost(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.authorId is string && data.authorId.size() <= 128
+        && data.authorName is string && data.authorName.size() <= 100
+        && data.authorAvatar is string && data.authorAvatar.size() <= 50
+        && (data.type == 'ofrezco' || data.type == 'necesito')
+        && data.title is string && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 5000
+        && data.category is string && data.category.size() <= 50
+        && data.suggestedPoints is number && data.suggestedPoints >= 0
+        && data.isUrgent is bool
+        && data.locationLabel is string && data.locationLabel.size() <= 100
+        && (data.status == 'abierto' || data.status == 'en_progreso' || data.status == 'completado' || data.status == 'cancelado')
+        && data.createdAt is string
+        && data.interestedUsers is list && data.interestedUsers.size() <= 100;
+    }
+
+    function isValidExchange(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.postId is string && data.postId.size() <= 128
+        && data.postTitle is string && data.postTitle.size() <= 200
+        && data.postCategory is string && data.postCategory.size() <= 50
+        && (data.postType == 'ofrezco' || data.postType == 'necesito')
+        && data.points is number && data.points >= 0
+        && data.requesterId is string && data.requesterId.size() <= 128
+        && data.helperId is string && data.helperId.size() <= 128
+        && data.requesterId != data.helperId
+        && (data.status == 'pendiente' || data.status == 'aceptado' || data.status == 'en_progreso' || data.status == 'completado' || data.status == 'cancelado')
+        && data.requesterConfirmedComplete is bool
+        && data.helperConfirmedComplete is bool
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && (data.type == 'new_request' || data.type == 'accepted' || data.type == 'completed' || data.type == 'new_favor_pending')
+        && data.title is string && data.title.size() <= 200
+        && data.message is string && data.message.size() <= 1000
+        && data.createdAt is string
+        && data.read is bool;
+    }
+
+    // --- COLECTION MATCH BLOCKS ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isSignedIn() && (
+        // Self Update (Profile details)
+        (request.auth.uid == userId && isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'avatar', 'bio', 'skills', 'locationLabel']))
+        ||
+        // Transaction Update (Points of requester/helper or completed favor counters)
+        (isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasAny(['points', 'favorsDone', 'favorsReceived']))
+      );
+      allow delete: if false;
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().authorId == request.auth.uid && isValidPost(incoming());
+      allow update: if isSignedIn() && (
+        // Author update
+        (existing().authorId == request.auth.uid && isValidPost(incoming()))
+        ||
+        // Interested users update (When helper expresses interest in high level flow)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['interestedUsers']))
+      );
+      allow delete: if isSignedIn() && existing().authorId == request.auth.uid;
+    }
+
+    match /exchanges/{exchangeId} {
+      allow read: if isSignedIn() && (resource.data.requesterId == request.auth.uid || resource.data.helperId == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().requesterId == request.auth.uid || incoming().helperId == request.auth.uid) && isValidExchange(incoming());
+      allow update: if isSignedIn() && (existing().requesterId == request.auth.uid || existing().helperId == request.auth.uid) && isValidExchange(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasAny(['status', 'requesterConfirmedComplete', 'helperConfirmedComplete', 'updatedAt'])
+      );
+      allow delete: if false;
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidNotification(incoming());
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}

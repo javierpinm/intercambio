@@ -42,6 +42,7 @@ import {
   AppNotification,
   NEIGHBORHOOD_COORDS
 } from "../lib/dataService";
+import { auth } from "../lib/firebase";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
@@ -142,6 +143,59 @@ export default function Home() {
     }
   }, []);
 
+  // Listen to Firebase Authenticated state changes
+  useEffect(() => {
+    let unsubscribeListeners: (() => void) | null = null;
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
+      // Clean up previous collection listeners
+      if (unsubscribeListeners) {
+        unsubscribeListeners();
+        unsubscribeListeners = null;
+      }
+
+      if (firebaseUser) {
+        // Real-time integration with Firebase/Firestore
+        const profile = await dataService.syncUserProfile(firebaseUser);
+        if (profile) {
+          setCurrentUser(profile);
+          setEditedName(profile.name);
+          setEditedBio(profile.bio);
+          setEditedLocation(profile.locationLabel);
+          setProfileSkills(profile.skills);
+          
+          await dataService.seedFirestoreIfEmpty();
+          
+          unsubscribeListeners = dataService.setupRealtimeListeners(profile.id, () => {
+            refreshData();
+          });
+          
+          refreshData();
+        }
+      } else {
+        // Fallback or guest user checks
+        const localUser = dataService.getCurrentUser();
+        if (localUser && localUser.id.startsWith("guest-")) {
+          setCurrentUser(localUser);
+          setEditedName(localUser.name);
+          setEditedBio(localUser.bio);
+          setEditedLocation(localUser.locationLabel);
+          setProfileSkills(localUser.skills);
+        } else {
+          setCurrentUser(null);
+        }
+        refreshData();
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeListeners) {
+        unsubscribeListeners();
+      }
+    };
+  }, []);
+
   // Helper theme toggle
   const toggleTheme = () => {
     const nextTheme = theme === "light" ? "dark" : "light";
@@ -154,15 +208,19 @@ export default function Home() {
     }
   };
 
-  const handleGoogleLogin = () => {
-    const user = dataService.loginAsGoogleMock();
-    if (user) {
-      setCurrentUser(user);
-      setEditedName(user.name);
-      setEditedBio(user.bio);
-      setEditedLocation(user.locationLabel);
-      setProfileSkills(user.skills);
-      refreshData();
+  const handleGoogleLogin = async () => {
+    try {
+      const user = await dataService.loginWithGoogle();
+      if (user) {
+        setCurrentUser(user);
+        setEditedName(user.name);
+        setEditedBio(user.bio);
+        setEditedLocation(user.locationLabel);
+        setProfileSkills(user.skills);
+        refreshData();
+      }
+    } catch (err) {
+      console.error("Google Login Error: ", err);
     }
   };
 
@@ -178,10 +236,11 @@ export default function Home() {
     }
   };
 
-  const handleLogOut = () => {
-    dataService.logOut();
+  const handleLogOut = async () => {
+    await dataService.logOut();
     setCurrentUser(null);
     setLogoutPrompt(false);
+    refreshData();
   };
 
   const handleUpdateProfile = (e: React.FormEvent) => {
