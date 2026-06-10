@@ -243,11 +243,11 @@ export default function Home() {
     refreshData();
   };
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editedName.trim()) return;
 
-    const updated = dataService.updateUserProfile({
+    const updated = await dataService.updateUserProfile({
       name: editedName,
       bio: editedBio,
       locationLabel: editedLocation,
@@ -275,7 +275,7 @@ export default function Home() {
     setProfileSkills(profileSkills.filter(s => s !== skillToRemove));
   };
 
-  const handleCreatePostSubmit = (e: React.FormEvent) => {
+  const handleCreatePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPostFormError("");
 
@@ -292,7 +292,7 @@ export default function Home() {
       return;
     }
 
-    const created = dataService.createPost({
+    const created = await dataService.createPost({
       type: newPostType,
       title: newPostTitle,
       description: newPostDescription,
@@ -316,13 +316,13 @@ export default function Home() {
   };
 
   // State Machine interactions
-  const handleInitiateExchange = (postId: string) => {
+  const handleInitiateExchange = async (postId: string) => {
     if (!currentUser) {
       alert("Por favor, inicia sesión para proponer un intercambio.");
       return;
     }
 
-    const exchange = dataService.initiateExchange(postId);
+    const exchange = await dataService.initiateExchange(postId);
     if (exchange) {
       setSelectedPostDetail(null);
       setShowExchangeSuccessModal(`¡Propuesta enviada! Has solicitado el intercambio para "${exchange.postTitle}".`);
@@ -333,8 +333,8 @@ export default function Home() {
     }
   };
 
-  const handleAcceptExchange = (id: string) => {
-    const updated = dataService.acceptExchange(id);
+  const handleAcceptExchange = async (id: string) => {
+    const updated = await dataService.acceptExchange(id);
     if (updated) {
       setShowExchangeSuccessModal(`¡Propuesta aceptada! El intercambio de "${updated.postTitle}" está ahora en progreso.`);
       refreshData();
@@ -343,8 +343,8 @@ export default function Home() {
     }
   };
 
-  const handleCompleteExchange = (id: string) => {
-    const updated = dataService.completeExchange(id);
+  const handleCompleteExchange = async (id: string) => {
+    const updated = await dataService.completeExchange(id);
     if (updated) {
       if (updated.requesterConfirmedComplete && updated.helperConfirmedComplete) {
         setShowExchangeSuccessModal(`¡Transacción completada! Los ${updated.points} puntos se han transferido.`);
@@ -355,14 +355,14 @@ export default function Home() {
     }
   };
 
-  const handleCancelExchange = (id: string) => {
-    dataService.cancelExchange(id);
+  const handleCancelExchange = async (id: string) => {
+    await dataService.cancelExchange(id);
     setCancelExchangePromptId(null);
     refreshData();
   };
 
-  const handleMarkNotifsRead = () => {
-    dataService.markNotificationsAsRead();
+  const handleMarkNotifsRead = async () => {
+    await dataService.markNotificationsAsRead();
     refreshData();
   };
 
